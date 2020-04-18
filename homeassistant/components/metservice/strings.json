@@ -1,0 +1,16 @@
+{
+  "config": {
+    "title": "MetService",
+    "step": {
+      "user": {
+        "title": "Pick a town/city to monitor",
+        "data": {
+          "city": "Town/City"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Location is already configured"
+    }
+  }
+}

@@ -111,6 +111,7 @@ FLOWS = [
     "met",
     "meteo_france",
     "metoffice",
+    "metservice",
     "mikrotik",
     "mill",
     "minecraft_server",

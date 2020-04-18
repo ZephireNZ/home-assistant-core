@@ -1,0 +1,12 @@
+{
+  "domain": "metservice",
+  "name": "MetService",
+  "config_flow": true,
+  "documentation": "https://www.home-assistant.io/integrations/metservice",
+  "requirements": [
+    "pymetservice==0.0.1"
+  ],
+  "codeowners": [
+    "@ZephireNZ"
+  ]
+}
