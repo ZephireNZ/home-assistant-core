@@ -1,6 +1,4 @@
 """Config flow for MetService integration."""
-import logging
-
 from pymetservice import get_cities_list
 import voluptuous as vol
 
@@ -8,8 +6,6 @@ from homeassistant import config_entries
 from homeassistant.const import CONF_MODE
 
 from .const import CONF_CITY, CONF_CITY_ID, CONF_MODE_DAILY, CONF_MODE_HOURLY, DOMAIN
-
-_LOGGER = logging.getLogger(__name__)
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -25,7 +21,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if self._cities is None:
-            self._cities = get_cities_list()
+            self._cities = await self.hass.async_add_executor_job(get_cities_list)
 
         if user_input is not None:
             city_id = self._cities[user_input[CONF_CITY]]
@@ -33,7 +29,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             await self.async_set_unique_id(f"{city_id}-{user_input[CONF_MODE]}")
             self._abort_if_unique_id_configured()
             return self.async_create_entry(
-                title=user_input[CONF_CITY],
+                title=f"{user_input[CONF_CITY]} ({user_input[CONF_MODE]})",
                 data={CONF_CITY_ID: city_id, CONF_MODE: user_input[CONF_MODE]},
             )
 

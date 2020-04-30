@@ -2,53 +2,67 @@
 from datetime import timedelta
 import logging
 
+from dateutil.parser import isoparse
 import pymetservice
-import voluptuous as vol
 
-from homeassistant.components.weather import PLATFORM_SCHEMA, WeatherEntity
-from homeassistant.const import CONF_NAME, TEMP_CELSIUS
-from homeassistant.helpers import config_validation as cv
-from homeassistant.util import Throttle
+from homeassistant.components.weather import (
+    ATTR_FORECAST_CONDITION,
+    ATTR_FORECAST_PRECIPITATION,
+    ATTR_FORECAST_TEMP,
+    ATTR_FORECAST_TEMP_LOW,
+    ATTR_FORECAST_TIME,
+    ATTR_FORECAST_WIND_BEARING,
+    ATTR_FORECAST_WIND_SPEED,
+    WeatherEntity,
+)
+from homeassistant.const import CONF_MODE, TEMP_CELSIUS
+from homeassistant.util import Throttle, dt
 
-from .const import CONF_CITY_ID
+from .const import CONF_CITY_ID, CONF_MODE_DAILY, CONF_MODE_HOURLY
 
 _LOGGER = logging.getLogger(__name__)
 
-ATTRIBUTION = "Weather forecast from MetService - Te Ratonga Tirorangi"
-DEFAULT_NAME = "MetService"
+ATTRIBUTION = "Data provided by MetService - Te Ratonga Tirorangi"
 
 MIN_TIME_BETWEEN_FORECAST_UPDATES = timedelta(minutes=30)
 MIN_TIME_BETWEEN_UPDATES = timedelta(minutes=10)
 
-PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
-    {
-        vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
-        vol.Required(CONF_CITY_ID): cv.string,
-    }
-)
+CONDITION_MAP = {
+    "Partly cloudy": "partlycloudy",
+    "Few showers": "rainy",
+    "Wind rain": "rainy",
+    "Showers": "rainy",
+    "Fine": "sunny",
+    "Rain": "rainy",
+    "Cloudy": "cloudy",
+    "Fog": "fog",
+    "Thunder": "lightning",
+    "Windy": "windy",
+}
 
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     """Add a weather entity from a config_entry."""
-    async_add_entities([MetServiceWeather(config_entry.data)], True)
+
+    cities = await hass.async_add_executor_job(pymetservice.get_cities_list)
+    city_ids = {value: key for key, value in cities.items()}
+    name = city_ids[config_entry.data[CONF_CITY_ID]]
+
+    async_add_entities([MetServiceWeather(hass, config_entry.data, name)], True)
 
 
 class MetServiceWeather(WeatherEntity):
     """Implementation of a Met.no weather condition."""
 
-    def __init__(self, config):
+    def __init__(self, hass, config, name):
         """Initialise the platform with a data instance and site."""
-        self._config = config
-
-        cities = pymetservice.get_cities_list()
-        city_ids = {value: key for key, value in cities.items()}
-
+        self._mode = config[CONF_MODE]
+        self._hass = hass
+        self._name = name
         self._city_id = config[CONF_CITY_ID]
-        self._name = city_ids[self._city_id]
 
         self._current_weather = None  # Local Obs
-        self._forecast_daily = None  # Local Forecast
-        self._forecast_hourly = None  # Hourly Obs and Forecast
+        self._forecast = None  # Local Forecast
 
     async def async_update(self):
         """Get latest data from MetService (throttled)."""
@@ -57,26 +71,75 @@ class MetServiceWeather(WeatherEntity):
 
     @Throttle(MIN_TIME_BETWEEN_UPDATES)
     async def _update_current(self):
-        localObs = pymetservice.getLocalObs(self._city_id)
+        localObs = await self._hass.async_add_executor_job(
+            pymetservice.getLocalObs, self._city_id
+        )
         self._current_weather = localObs["threeHour"]
 
     @Throttle(MIN_TIME_BETWEEN_FORECAST_UPDATES)
     async def _update_forecast(self):
-        # TODO
-        localForecast = pymetservice.getLocalForecast(self._city_id)
-        hourlyObs = pymetservice.getHourlyObsAndForecast(self._city_id)
-        self._forecast_daily = localForecast["days"]
-        self._forecast_hourly = hourlyObs["forecastData"]
+        # MetService do not provide live weather condition name, so use the daily condition
+        forecast = await self._hass.async_add_executor_job(
+            pymetservice.getLocalForecast, self._city_id
+        )
+        forecast = forecast["days"]
+
+        today = forecast[0]
+
+        self._condition = CONDITION_MAP.get(today["forecastWord"], "sunny")
+
+        # Override to night time if outside of daytime
+        sun_rise = isoparse(today["riseSet"]["sunRiseISO"])
+        sun_set = isoparse(today["riseSet"]["sunSetISO"])
+        now = dt.utcnow()
+        if now < sun_rise or now > sun_set:
+            self._condition = "clear-night"
+
+        self._forecast = []
+        if self._mode == CONF_MODE_DAILY:
+            for data in forecast:
+                if data["forecastWord"] not in CONDITION_MAP:
+                    _LOGGER.warning(
+                        "Unrecognised weather condition: %s", data["forecastWord"]
+                    )
+
+                self._forecast.append(
+                    {
+                        ATTR_FORECAST_CONDITION: CONDITION_MAP.get(
+                            data["forecastWord"], "sunny"
+                        ),
+                        ATTR_FORECAST_TIME: isoparse(data["dateISO"]),
+                        ATTR_FORECAST_TEMP: int(data["max"]),
+                        ATTR_FORECAST_TEMP_LOW: int(data["min"]),
+                    }
+                )
+
+        elif self._mode == CONF_MODE_HOURLY:
+            forecast = await self._hass.async_add_executor_job(
+                pymetservice.getHourlyObsAndForecast, self._city_id
+            )
+            forecast = forecast["forecastData"]
+
+            for data in forecast:
+                self._forecast.append(
+                    {
+                        ATTR_FORECAST_TIME: isoparse(data["dateISO"]),
+                        ATTR_FORECAST_PRECIPITATION: float(data["rainFall"]),
+                        ATTR_FORECAST_TEMP: int(data["temperature"]),
+                        ATTR_FORECAST_WIND_BEARING: data["windDir"],
+                        ATTR_FORECAST_WIND_SPEED: data["windSpeed"],
+                    }
+                )
 
     async def async_added_to_hass(self):
         """Start fetching data."""
         await self.async_update()
-        self.async_write_ha_state
+        self.async_write_ha_state()
 
     @property
     def unique_id(self):
         """Return the unique ID."""
-        return self._city_id
+        return f"{self._city_id}_{self._mode}"
 
     @property
     def name(self):
@@ -86,7 +149,7 @@ class MetServiceWeather(WeatherEntity):
     @property
     def condition(self):
         """Return the current condition."""
-        return "WIP"
+        return self._condition
 
     @property
     def temperature(self):
@@ -126,4 +189,4 @@ class MetServiceWeather(WeatherEntity):
     @property
     def forecast(self):
         """Return the forecast array."""
-        return []
+        return self._forecast

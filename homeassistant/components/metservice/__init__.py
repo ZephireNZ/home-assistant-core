@@ -2,10 +2,7 @@
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from .config_flow import ConfigFlow  # noqa: F401
 from .const import DOMAIN  # noqa: F401
-
-PLATFORMS = ["weather"]
 
 
 async def async_setup(hass: HomeAssistant, config: dict):
@@ -23,5 +20,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Unload a config entry."""
-    await hass.config_entries.async_forward_entry_unload(entry, "weather")
-    return True
+    if await hass.config_entries.async_forward_entry_unload(entry, "weather"):
+        return True
+
+    return False
