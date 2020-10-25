@@ -1,7 +1,10 @@
 """The template component."""
-from homeassistant.const import SERVICE_RELOAD
+from homeassistant.components import websocket_api
+from homeassistant.const import ATTR_ID, SERVICE_RELOAD
 from homeassistant.helpers.reload import async_reload_integration_platforms
+from homeassistant.helpers.typing import HomeAssistantType
 
+from .common import TEMPLATE_ENTITIES
 from .const import DOMAIN, EVENT_TEMPLATE_RELOADED, PLATFORMS
 
 
@@ -19,4 +22,16 @@ async def async_setup_reload_service(hass):
 
     hass.helpers.service.async_register_admin_service(
         DOMAIN, SERVICE_RELOAD, _reload_config
+    )
+
+
+@websocket_api.websocket_command({"type": "template/list"})
+def get_templates(
+    hass: HomeAssistantType, connection: websocket_api.ActiveConnection, msg
+):
+    """Get list of configured template entities."""
+
+    connection.send_result(
+        msg[ATTR_ID],
+        TEMPLATE_ENTITIES,
     )

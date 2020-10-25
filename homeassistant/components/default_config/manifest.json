@@ -27,6 +27,7 @@
     "input_number",
     "input_select",
     "counter",
+    "template",
     "timer"
   ],
   "codeowners": []
