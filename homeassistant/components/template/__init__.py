@@ -1,16 +1,18 @@
 """The template component."""
+import logging
+
 from homeassistant.components import websocket_api
 from homeassistant.const import ATTR_ID, SERVICE_RELOAD
-from homeassistant.core import Event
 from homeassistant.helpers.reload import async_reload_integration_platforms
 from homeassistant.helpers.typing import ConfigType, HomeAssistantType
-from homeassistant.setup import ATTR_COMPONENT, EVENT_COMPONENT_LOADED
 
 from . import binary_sensor
 from .common import TEMPLATE_ENTITIES
 from .const import DOMAIN, EVENT_TEMPLATE_RELOADED, PLATFORMS
 
-STORAGE_COMPONENTS = {binary_sensor.DOMAIN: binary_sensor}
+_LOGGER = logging.getLogger(f"{__name__}")
+
+STORAGE_COMPONENTS = [binary_sensor]
 
 
 async def async_setup_reload_service(hass):
@@ -34,13 +36,9 @@ async def async_setup(hass: HomeAssistantType, config: ConfigType):
     """Set up the template platform."""
     websocket_api.async_register_command(hass, get_templates)
 
-    async def async_component_loaded(event: Event):
-        component = event.data[ATTR_COMPONENT]
+    for component in STORAGE_COMPONENTS:
+        await component._async_load_storage(hass)
 
-        if component in STORAGE_COMPONENTS:
-            await STORAGE_COMPONENTS[component]._async_create_entities(hass)
-
-    hass.bus.async_listen(EVENT_COMPONENT_LOADED, async_component_loaded)
     return True
 
 

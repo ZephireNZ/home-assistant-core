@@ -523,7 +523,7 @@ def template(value: Optional[Any]) -> template_helper.Template:
         raise vol.Invalid("template value is None")
     if isinstance(value, template_helper.Template):
         return value
-    if isinstance(value, (list, dict, template_helper.Template)):
+    if isinstance(value, (list, dict)):
         raise vol.Invalid("template value should be a string")
 
     template_value = template_helper.Template(str(value))  # type: ignore

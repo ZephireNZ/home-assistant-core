@@ -39,6 +39,8 @@ from .common import attach_template_listener
 from .const import CONF_AVAILABILITY_TEMPLATE, DOMAIN as TEMPLATE_DOMAIN, PLATFORMS
 from .template_entity import TemplateEntity
 
+_LOGGER = logging.getLogger(f"{__name__}")
+
 CONF_DELAY_ON = "delay_on"
 CONF_DELAY_OFF = "delay_off"
 CONF_ATTRIBUTE_TEMPLATES = "attribute_templates"
@@ -46,11 +48,11 @@ STORAGE_KEY = f"template.{DOMAIN}"
 STORAGE_VERSION = 1
 
 SENSOR_FIELDS = {
-    vol.Required(CONF_VALUE_TEMPLATE): cv.template,
-    vol.Optional(CONF_ICON_TEMPLATE): cv.template,
-    vol.Optional(CONF_ENTITY_PICTURE_TEMPLATE): cv.template,
-    vol.Optional(CONF_AVAILABILITY_TEMPLATE): cv.template,
-    vol.Optional(CONF_ATTRIBUTE_TEMPLATES): vol.Schema({cv.string: cv.template}),
+    vol.Required(CONF_VALUE_TEMPLATE): cv.string,
+    vol.Optional(CONF_ICON_TEMPLATE): cv.string,
+    vol.Optional(CONF_ENTITY_PICTURE_TEMPLATE): cv.string,
+    vol.Optional(CONF_AVAILABILITY_TEMPLATE): cv.string,
+    vol.Optional(CONF_ATTRIBUTE_TEMPLATES): vol.Schema({cv.string: cv.string}),
     vol.Optional(CONF_FRIENDLY_NAME): cv.string,
     vol.Optional(CONF_ENTITY_ID): cv.entity_ids,
     vol.Optional(CONF_DEVICE_CLASS): DEVICE_CLASSES_SCHEMA,
@@ -71,39 +73,56 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
 STORAGE_SCHEMA = vol.Schema(SENSOR_FIELDS).extend({vol.Required(CONF_ID): cv.string})
 
 CREATE_FIELDS = {
-    vol.Required(CONF_FRIENDLY_NAME): vol.All(str, vol.Length(min=1)),
-    vol.Required(CONF_VALUE_TEMPLATE): vol.All(cv.template, vol.Length(min=1)),
-    vol.Optional(CONF_ICON_TEMPLATE): cv.template,
-    vol.Optional(CONF_ENTITY_PICTURE_TEMPLATE): cv.template,
-    vol.Optional(CONF_AVAILABILITY_TEMPLATE): cv.template,
+    vol.Required(CONF_FRIENDLY_NAME): vol.All(cv.string, vol.Length(min=1)),
+    vol.Required(CONF_VALUE_TEMPLATE): cv.string,
+    vol.Optional(CONF_ICON_TEMPLATE): cv.string,
+    vol.Optional(CONF_ENTITY_PICTURE_TEMPLATE): cv.string,
+    vol.Optional(CONF_AVAILABILITY_TEMPLATE): cv.string,
     vol.Optional(CONF_DEVICE_CLASS): DEVICE_CLASSES_SCHEMA,
     vol.Optional(CONF_DELAY_ON): cv.positive_time_period,
     vol.Optional(CONF_DELAY_OFF): cv.positive_time_period,
-    vol.Optional(CONF_ATTRIBUTE_TEMPLATES): vol.Schema({cv.string: cv.template}),
+    vol.Optional(CONF_ATTRIBUTE_TEMPLATES): vol.Schema({cv.string: cv.string}),
     vol.Optional(CONF_ENTITY_ID): cv.entity_ids,
 }
 
 UPDATE_FIELDS = {
-    vol.Optional(CONF_FRIENDLY_NAME): cv.string,
-    vol.Optional(CONF_VALUE_TEMPLATE): cv.template,
-    vol.Optional(CONF_ICON_TEMPLATE): cv.template,
-    vol.Optional(CONF_ENTITY_PICTURE_TEMPLATE): cv.template,
-    vol.Optional(CONF_AVAILABILITY_TEMPLATE): cv.template,
+    vol.Optional(CONF_FRIENDLY_NAME): vol.All(cv.string, vol.Length(min=1)),
+    vol.Optional(CONF_VALUE_TEMPLATE): cv.string,
+    vol.Optional(CONF_ICON_TEMPLATE): cv.string,
+    vol.Optional(CONF_ENTITY_PICTURE_TEMPLATE): cv.string,
+    vol.Optional(CONF_AVAILABILITY_TEMPLATE): cv.string,
     vol.Optional(CONF_DEVICE_CLASS): DEVICE_CLASSES_SCHEMA,
     vol.Optional(CONF_DELAY_ON): cv.positive_time_period,
     vol.Optional(CONF_DELAY_OFF): cv.positive_time_period,
-    vol.Optional(CONF_ATTRIBUTE_TEMPLATES): vol.Schema({cv.string: cv.template}),
+    vol.Optional(CONF_ATTRIBUTE_TEMPLATES): vol.Schema({cv.string: cv.string}),
     vol.Optional(CONF_ENTITY_ID): cv.entity_ids,
 }
 
+# Used to convert at the entity layer, as templates and timedeltas are not natively serializable
+TYPE_CONVERSION = vol.Schema(
+    {
+        vol.Required(CONF_VALUE_TEMPLATE): vol.All(cv.template),
+        vol.Optional(CONF_ICON_TEMPLATE): cv.template,
+        vol.Optional(CONF_ENTITY_PICTURE_TEMPLATE): cv.template,
+        vol.Optional(CONF_AVAILABILITY_TEMPLATE): cv.template,
+        vol.Optional(CONF_ATTRIBUTE_TEMPLATES): vol.Schema({cv.string: cv.template}),
+        vol.Optional(CONF_DELAY_ON): cv.time_period_str,
+        vol.Optional(CONF_DELAY_OFF): cv.time_period_str,
+    },
+    extra=vol.ALLOW_EXTRA,
+)
 
-async def _async_create_entities(hass, config):
+ID_MANAGER = collection.IDManager()
+
+
+async def _async_load_storage(hass):
     """Set up the helper storage and WebSockets."""
-    id_manager = collection.IDManager()
+    await async_setup_reload_service(hass, TEMPLATE_DOMAIN, PLATFORMS)
+
     storage_collection = BinarySensorStorageCollection(
         Store(hass, STORAGE_VERSION, STORAGE_KEY),
         logging.getLogger(f"{__name__}.storage_collection"),
-        id_manager,
+        ID_MANAGER,
     )
     collection.attach_entity_component_collection(
         hass.data[DOMAIN],
@@ -120,9 +139,14 @@ async def _async_create_entities(hass, config):
 
     collection.attach_entity_registry_cleaner(hass, DOMAIN, DOMAIN, storage_collection)
 
+
+async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
+    """Set up the template binary sensors."""
+    _LOGGER.warn("SETUP")
+
     yaml_collection = collection.YamlCollection(
         logging.getLogger(f"{__name__}.yaml_collection"),
-        id_manager,
+        ID_MANAGER,
     )
 
     collection.attach_entity_component_collection(
@@ -137,13 +161,6 @@ async def _async_create_entities(hass, config):
     )
 
     collection.attach_entity_registry_cleaner(hass, DOMAIN, DOMAIN, yaml_collection)
-
-
-async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
-    """Set up the template binary sensors."""
-
-    await async_setup_reload_service(hass, TEMPLATE_DOMAIN, PLATFORMS)
-    _async_create_entities(hass, config)
 
 
 class BinarySensorStorageCollection(collection.StorageCollection):
@@ -183,6 +200,8 @@ class BinarySensorTemplate(TemplateEntity, BinarySensorEntity):
 
     def __init__(self, hass: HomeAssistantType, config: ConfigType):
         """Initialize the Template binary sensor."""
+        config = TYPE_CONVERSION(config)
+
         super().__init__(
             attribute_templates=config.get(CONF_ATTRIBUTE_TEMPLATES, {}),
             availability_template=config.get(CONF_AVAILABILITY_TEMPLATE),
@@ -200,17 +219,9 @@ class BinarySensorTemplate(TemplateEntity, BinarySensorEntity):
         self._template = config.get(CONF_VALUE_TEMPLATE)
         self._state = None
         self._delay_cancel = None
-        self._delay_on = (
-            cv.time_period_str(config[CONF_DELAY_ON])
-            if CONF_DELAY_ON in config
-            else None
-        )
-        self._delay_off = (
-            cv.time_period_str(config[CONF_DELAY_OFF])
-            if CONF_DELAY_OFF in config
-            else None
-        )
-        self._unique_id = config.get(CONF_UNIQUE_ID)
+        self._delay_on = config.get(CONF_DELAY_ON)
+        self._delay_off = config.get(CONF_DELAY_OFF)
+        self._unique_id = config.get(CONF_UNIQUE_ID, config.get(CONF_ID))
 
     @classmethod
     def from_storage(cls, hass, config: typing.Dict) -> "BinarySensorTemplate":
@@ -233,9 +244,6 @@ class BinarySensorTemplate(TemplateEntity, BinarySensorEntity):
 
     async def async_update_config(self, config: typing.Dict) -> None:
         """Handle when the config is updated."""
-        self.entity_id = async_generate_entity_id(
-            ENTITY_ID_FORMAT, config.get(CONF_ID), hass=self.hass
-        )
         # TODO Update config to new Template format
         await self.async_update()
         self.async_write_ha_state()

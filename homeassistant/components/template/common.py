@@ -3,7 +3,6 @@
 from typing import List
 
 from homeassistant.core import callback
-from homeassistant.helpers import entity_registry
 from homeassistant.helpers.collection import (
     CHANGE_ADDED,
     CHANGE_REMOVED,
@@ -29,8 +28,7 @@ def attach_template_listener(
         if change_type == CHANGE_UPDATED:
             return
 
-        ent_reg = await entity_registry.async_get_registry(hass)
-        entity_id = ent_reg.async_get_entity_id(domain, platform, item_id)
+        entity_id = f"{domain}.{item_id}"
 
         if change_type == CHANGE_ADDED:
             TEMPLATE_ENTITIES.append(entity_id)
