@@ -65,13 +65,6 @@ UPDATE_FIELDS = {
 }
 
 
-def _format_timedelta(delta: timedelta):
-    total_seconds = delta.total_seconds()
-    hours, remainder = divmod(total_seconds, 3600)
-    minutes, seconds = divmod(remainder, 60)
-    return f"{int(hours)}:{int(minutes):02}:{int(seconds):02}"
-
-
 def _none_to_empty_dict(value):
     if value is None:
         return {}
@@ -87,7 +80,7 @@ CONFIG_SCHEMA = vol.Schema(
                     vol.Optional(CONF_NAME): cv.string,
                     vol.Optional(CONF_ICON): cv.icon,
                     vol.Optional(CONF_DURATION, default=DEFAULT_DURATION): vol.All(
-                        cv.time_period, _format_timedelta
+                        cv.time_period, cv.format_timedelta
                     ),
                 },
             )
@@ -168,7 +161,7 @@ class TimerStorageCollection(collection.StorageCollection):
         """Validate the config is valid."""
         data = self.CREATE_SCHEMA(data)
         # make duration JSON serializeable
-        data[CONF_DURATION] = _format_timedelta(data[CONF_DURATION])
+        data[CONF_DURATION] = cv.format_timedelta(data[CONF_DURATION])
         return data
 
     @callback
@@ -181,7 +174,7 @@ class TimerStorageCollection(collection.StorageCollection):
         data = {**data, **self.UPDATE_SCHEMA(update_data)}
         # make duration JSON serializeable
         if CONF_DURATION in update_data:
-            data[CONF_DURATION] = _format_timedelta(data[CONF_DURATION])
+            data[CONF_DURATION] = cv.format_timedelta(data[CONF_DURATION])
         return data
 
 
@@ -235,13 +228,13 @@ class Timer(RestoreEntity):
     def state_attributes(self):
         """Return the state attributes."""
         attrs = {
-            ATTR_DURATION: _format_timedelta(self._duration),
+            ATTR_DURATION: cv.format_timedelta(self._duration),
             ATTR_EDITABLE: self.editable,
         }
         if self._end is not None:
             attrs[ATTR_FINISHES_AT] = self._end.isoformat()
         if self._remaining is not None:
-            attrs[ATTR_REMAINING] = _format_timedelta(self._remaining)
+            attrs[ATTR_REMAINING] = cv.format_timedelta(self._remaining)
 
         return attrs
 

@@ -45,32 +45,30 @@ CONF_ATTRIBUTE_TEMPLATES = "attribute_templates"
 STORAGE_KEY = f"template.{DOMAIN}"
 STORAGE_VERSION = 1
 
+SENSOR_FIELDS = {
+    vol.Required(CONF_VALUE_TEMPLATE): cv.template,
+    vol.Optional(CONF_ICON_TEMPLATE): cv.template,
+    vol.Optional(CONF_ENTITY_PICTURE_TEMPLATE): cv.template,
+    vol.Optional(CONF_AVAILABILITY_TEMPLATE): cv.template,
+    vol.Optional(CONF_ATTRIBUTE_TEMPLATES): vol.Schema({cv.string: cv.template}),
+    vol.Optional(CONF_FRIENDLY_NAME): cv.string,
+    vol.Optional(CONF_ENTITY_ID): cv.entity_ids,
+    vol.Optional(CONF_DEVICE_CLASS): DEVICE_CLASSES_SCHEMA,
+    vol.Optional(CONF_DELAY_ON): vol.All(cv.time_period, cv.format_timedelta),
+    vol.Optional(CONF_DELAY_OFF): vol.All(cv.time_period, cv.format_timedelta),
+    vol.Optional(CONF_UNIQUE_ID): cv.string,
+}
+
 SENSOR_SCHEMA = vol.All(
     cv.deprecated(CONF_ENTITY_ID),
-    vol.Schema(
-        {
-            vol.Required(CONF_VALUE_TEMPLATE): cv.template,
-            vol.Optional(CONF_ICON_TEMPLATE): cv.template,
-            vol.Optional(CONF_ENTITY_PICTURE_TEMPLATE): cv.template,
-            vol.Optional(CONF_AVAILABILITY_TEMPLATE): cv.template,
-            vol.Optional(CONF_ATTRIBUTE_TEMPLATES): vol.Schema(
-                {cv.string: cv.template}
-            ),
-            vol.Optional(CONF_FRIENDLY_NAME): cv.string,
-            vol.Optional(CONF_ENTITY_ID): cv.entity_ids,
-            vol.Optional(CONF_DEVICE_CLASS): DEVICE_CLASSES_SCHEMA,
-            vol.Optional(CONF_DELAY_ON): cv.positive_time_period,
-            vol.Optional(CONF_DELAY_OFF): cv.positive_time_period,
-            vol.Optional(CONF_UNIQUE_ID): cv.string,
-        }
-    ),
+    vol.Schema(SENSOR_FIELDS),
 )
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     {vol.Required(CONF_SENSORS): cv.schema_with_slug_keys(SENSOR_SCHEMA)}
 )
 
-STORAGE_SCHEMA = SENSOR_SCHEMA.extend({vol.Required(CONF_ID): cv.string})
+STORAGE_SCHEMA = vol.Schema(SENSOR_FIELDS).extend({vol.Required(CONF_ID): cv.string})
 
 CREATE_FIELDS = {
     vol.Required(CONF_FRIENDLY_NAME): vol.All(str, vol.Length(min=1)),
@@ -79,8 +77,8 @@ CREATE_FIELDS = {
     vol.Optional(CONF_ENTITY_PICTURE_TEMPLATE): cv.template,
     vol.Optional(CONF_AVAILABILITY_TEMPLATE): cv.template,
     vol.Optional(CONF_DEVICE_CLASS): DEVICE_CLASSES_SCHEMA,
-    vol.Optional(CONF_DELAY_ON): vol.All(cv.time_period, cv.positive_timedelta),
-    vol.Optional(CONF_DELAY_OFF): vol.All(cv.time_period, cv.positive_timedelta),
+    vol.Optional(CONF_DELAY_ON): cv.positive_time_period,
+    vol.Optional(CONF_DELAY_OFF): cv.positive_time_period,
     vol.Optional(CONF_ATTRIBUTE_TEMPLATES): vol.Schema({cv.string: cv.template}),
     vol.Optional(CONF_ENTITY_ID): cv.entity_ids,
 }
@@ -92,8 +90,8 @@ UPDATE_FIELDS = {
     vol.Optional(CONF_ENTITY_PICTURE_TEMPLATE): cv.template,
     vol.Optional(CONF_AVAILABILITY_TEMPLATE): cv.template,
     vol.Optional(CONF_DEVICE_CLASS): DEVICE_CLASSES_SCHEMA,
-    vol.Optional(CONF_DELAY_ON): vol.All(cv.time_period, cv.positive_timedelta),
-    vol.Optional(CONF_DELAY_OFF): vol.All(cv.time_period, cv.positive_timedelta),
+    vol.Optional(CONF_DELAY_ON): cv.positive_time_period,
+    vol.Optional(CONF_DELAY_OFF): cv.positive_time_period,
     vol.Optional(CONF_ATTRIBUTE_TEMPLATES): vol.Schema({cv.string: cv.template}),
     vol.Optional(CONF_ENTITY_ID): cv.entity_ids,
 }
@@ -101,9 +99,11 @@ UPDATE_FIELDS = {
 
 async def _async_create_entities(hass, config):
     """Set up the helper storage and WebSockets."""
+    id_manager = collection.IDManager()
     storage_collection = BinarySensorStorageCollection(
         Store(hass, STORAGE_VERSION, STORAGE_KEY),
         logging.getLogger(f"{__name__}.storage_collection"),
+        id_manager,
     )
     collection.attach_entity_component_collection(
         hass.data[DOMAIN],
@@ -121,7 +121,8 @@ async def _async_create_entities(hass, config):
     collection.attach_entity_registry_cleaner(hass, DOMAIN, DOMAIN, storage_collection)
 
     yaml_collection = collection.YamlCollection(
-        logging.getLogger(f"{__name__}.yaml_collection")
+        logging.getLogger(f"{__name__}.yaml_collection"),
+        id_manager,
     )
 
     collection.attach_entity_component_collection(
@@ -153,7 +154,13 @@ class BinarySensorStorageCollection(collection.StorageCollection):
 
     async def _process_create_data(self, data: typing.Dict) -> typing.Dict:
         """Validate the config is valid."""
-        return self.CREATE_SCHEMA(data)
+        data = self.CREATE_SCHEMA(data)
+        if CONF_DELAY_ON in data:
+            data[CONF_DELAY_ON] = cv.format_timedelta(data[CONF_DELAY_ON])
+        if CONF_DELAY_OFF in data:
+            data[CONF_DELAY_OFF] = cv.format_timedelta(data[CONF_DELAY_OFF])
+
+        return data
 
     @callback
     def _get_suggested_id(self, info: typing.Dict) -> str:
@@ -162,7 +169,13 @@ class BinarySensorStorageCollection(collection.StorageCollection):
 
     async def _update_data(self, data: dict, update_data: typing.Dict) -> typing.Dict:
         """Return a new updated data object."""
-        return {**data, **self.UPDATE_SCHEMA(update_data)}
+        data = {**data, **self.UPDATE_SCHEMA(update_data)}
+        if CONF_DELAY_ON in data:
+            data[CONF_DELAY_ON] = cv.format_timedelta(data[CONF_DELAY_ON])
+        if CONF_DELAY_OFF in data:
+            data[CONF_DELAY_OFF] = cv.format_timedelta(data[CONF_DELAY_OFF])
+
+        return data
 
 
 class BinarySensorTemplate(TemplateEntity, BinarySensorEntity):
@@ -187,8 +200,16 @@ class BinarySensorTemplate(TemplateEntity, BinarySensorEntity):
         self._template = config.get(CONF_VALUE_TEMPLATE)
         self._state = None
         self._delay_cancel = None
-        self._delay_on = config.get(CONF_DELAY_ON)
-        self._delay_off = config.get(CONF_DELAY_OFF)
+        self._delay_on = (
+            cv.time_period_str(config[CONF_DELAY_ON])
+            if CONF_DELAY_ON in config
+            else None
+        )
+        self._delay_off = (
+            cv.time_period_str(config[CONF_DELAY_OFF])
+            if CONF_DELAY_OFF in config
+            else None
+        )
         self._unique_id = config.get(CONF_UNIQUE_ID)
 
     @classmethod

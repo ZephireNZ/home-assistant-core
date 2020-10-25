@@ -843,6 +843,14 @@ def custom_serializer(schema: Any) -> Any:
     return voluptuous_serialize.UNSUPPORTED
 
 
+def format_timedelta(delta: timedelta) -> str:
+    """Serialize a timedelta to an HH:MM:SS string."""
+    total_seconds = delta.total_seconds()
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"{int(hours)}:{int(minutes):02}:{int(seconds):02}"
+
+
 # Schemas
 PLATFORM_SCHEMA = vol.Schema(
     {
