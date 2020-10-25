@@ -36,7 +36,7 @@ from homeassistant.helpers.template import result_as_boolean
 from homeassistant.helpers.typing import ConfigType, HomeAssistantType
 
 from .common import attach_template_listener
-from .const import CONF_AVAILABILITY_TEMPLATE, PLATFORMS
+from .const import CONF_AVAILABILITY_TEMPLATE, DOMAIN as TEMPLATE_DOMAIN, PLATFORMS
 from .template_entity import TemplateEntity
 
 CONF_DELAY_ON = "delay_on"
@@ -141,7 +141,7 @@ async def _async_create_entities(hass, config):
 async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
     """Set up the template binary sensors."""
 
-    await async_setup_reload_service(hass, DOMAIN, PLATFORMS)
+    await async_setup_reload_service(hass, TEMPLATE_DOMAIN, PLATFORMS)
     _async_create_entities(hass, config)
 
 
