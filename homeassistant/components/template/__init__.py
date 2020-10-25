@@ -10,6 +10,8 @@ from . import binary_sensor
 from .common import TEMPLATE_ENTITIES
 from .const import DOMAIN, EVENT_TEMPLATE_RELOADED, PLATFORMS
 
+STORAGE_COMPONENTS = {binary_sensor.DOMAIN: binary_sensor}
+
 
 async def async_setup_reload_service(hass):
     """Create the reload service for the template domain."""
@@ -35,8 +37,8 @@ async def async_setup(hass: HomeAssistantType, config: ConfigType):
     async def async_component_loaded(event: Event):
         component = event.data[ATTR_COMPONENT]
 
-        if component == binary_sensor.DOMAIN:
-            await binary_sensor.async_setup_helpers(hass)
+        if component in STORAGE_COMPONENTS:
+            await STORAGE_COMPONENTS[component]._async_create_entities(hass)
 
     hass.bus.async_listen(EVENT_COMPONENT_LOADED, async_component_loaded)
     return True
