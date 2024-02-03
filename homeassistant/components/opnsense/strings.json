@@ -1,0 +1,26 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "data": {
+          "name": "[%key:common::config_flow::data::name%]",
+          "url": "[%key:common::config_flow::data::url%]",
+          "api_key": "[%key:common::config_flow::data::api_key%]",
+          "api_secret": "API Secret",
+          "verify_ssl": "[%key:common::config_flow::data::verify_ssl%]",
+          "tracker_interfaces": "Interfaces to track"
+        }
+      }
+    },
+    "error": {
+      "invalid_url": "Invalid URL",
+      "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",
+      "missing_permission_arp_table": "API key's user must have permission GUI - Diagnostics: ARP Table",
+      "missing_permision_network_insight": "API key's user must have permission GUI - Diagnostics: Network Insight",
+      "unknown": "[%key:common::config_flow::error::unknown%]"
+    },
+    "abort": {
+      "already_configured": "[%key:common::config_flow::abort::already_configured_device%]"
+    }
+  }
+}
