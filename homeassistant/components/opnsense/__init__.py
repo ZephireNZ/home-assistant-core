@@ -1,74 +1,69 @@
 """Support for OPNSense Routers."""
-import logging
-
-from pyopnsense import diagnostics
-from pyopnsense.exceptions import APIException
-import voluptuous as vol
-
-from homeassistant.const import CONF_API_KEY, CONF_URL, CONF_VERIFY_SSL, Platform
+from homeassistant.config_entries import SOURCE_IMPORT, ConfigEntry
+from homeassistant.const import (
+    CONF_API_KEY,
+    CONF_NAME,
+    CONF_URL,
+    CONF_VERIFY_SSL,
+    Platform,
+)
 from homeassistant.core import HomeAssistant
-import homeassistant.helpers.config_validation as cv
-from homeassistant.helpers.discovery import load_platform
 from homeassistant.helpers.typing import ConfigType
 
 from .const import CONF_API_SECRET, CONF_TRACKER_INTERFACES, DOMAIN
+from .coordinator import OPNSenseDataCoordinator
 
-_LOGGER = logging.getLogger(__name__)
-
-CONFIG_SCHEMA = vol.Schema(
-    {
-        DOMAIN: vol.Schema(
-            {
-                vol.Required(CONF_URL): cv.url,
-                vol.Required(CONF_API_KEY): cv.string,
-                vol.Required(CONF_API_SECRET): cv.string,
-                vol.Optional(CONF_VERIFY_SSL, default=False): cv.boolean,
-                vol.Optional(CONF_TRACKER_INTERFACES, default=[]): vol.All(
-                    cv.ensure_list, [cv.string]
-                ),
-            }
-        )
-    },
-    extra=vol.ALLOW_EXTRA,
-)
+PLATFORMS: list[Platform] = [Platform.DEVICE_TRACKER]
 
 
-def setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Set up the opnsense component."""
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up OPNSense from a config entry."""
+
+    hass.data.setdefault(DOMAIN, {})
+
+    hass.data[DOMAIN][entry.entry_id] = OPNSenseDataCoordinator(
+        hass,
+        entry.title,
+        entry.data[CONF_URL],
+        entry.data[CONF_API_KEY],
+        entry.data[CONF_API_SECRET],
+        entry.data[CONF_VERIFY_SSL],
+        entry.data[CONF_TRACKER_INTERFACES],
+    )
+
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    return True
+
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload a config entry."""
+    if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
+        hass.data[DOMAIN].pop(entry.entry_id)
+
+    return unload_ok
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Set up the OPNSense component."""
+    if DOMAIN not in config:
+        return True
 
     conf = config[DOMAIN]
-    url = conf[CONF_URL]
-    api_key = conf[CONF_API_KEY]
-    api_secret = conf[CONF_API_SECRET]
-    verify_ssl = conf[CONF_VERIFY_SSL]
-    tracker_interfaces = conf[CONF_TRACKER_INTERFACES]
 
-    interfaces_client = diagnostics.InterfaceClient(
-        api_key, api_secret, url, verify_ssl, timeout=20
-    )
-    try:
-        interfaces_client.get_arp()
-    except APIException:
-        _LOGGER.exception("Failure while connecting to OPNsense API endpoint")
-        return False
-
-    if tracker_interfaces:
-        # Verify that specified tracker interfaces are valid
-        netinsight_client = diagnostics.NetworkInsightClient(
-            api_key, api_secret, url, verify_ssl, timeout=20
+    hass.async_create_task(
+        hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": SOURCE_IMPORT},
+            data={
+                CONF_NAME: "OPNSense",
+                CONF_URL: conf[CONF_URL],
+                CONF_API_KEY: conf[CONF_API_KEY],
+                CONF_API_SECRET: conf[CONF_API_SECRET],
+                CONF_VERIFY_SSL: conf.get(CONF_VERIFY_SSL, False),
+                CONF_TRACKER_INTERFACES: conf.get(CONF_TRACKER_INTERFACES, []),
+            },
         )
-        interfaces = list(netinsight_client.get_interfaces().values())
-        for interface in tracker_interfaces:
-            if interface not in interfaces:
-                _LOGGER.error(
-                    "Specified OPNsense tracker interface %s is not found", interface
-                )
-                return False
+    )
 
-    hass.data[DOMAIN] = {
-        "interfaces": interfaces_client,
-        CONF_TRACKER_INTERFACES: tracker_interfaces,
-    }
-
-    load_platform(hass, Platform.DEVICE_TRACKER, DOMAIN, tracker_interfaces, config)
     return True

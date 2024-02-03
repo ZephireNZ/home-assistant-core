@@ -33,7 +33,7 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         vol.Required(CONF_URL): str,
         vol.Required(CONF_API_KEY): str,
         vol.Required(CONF_API_SECRET): str,
-        vol.Optional(CONF_VERIFY_SSL, default=True): bool,
+        vol.Optional(CONF_VERIFY_SSL, default=False): bool,
         vol.Optional(CONF_TRACKER_INTERFACES): list[str],
     }
 )
@@ -122,3 +122,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
         )
+
+    async def async_step_import(self, import_data: dict[str, Any]) -> FlowResult:
+        """Import existing config from configuration.yaml."""
+        return await self.async_step_user(import_data)
