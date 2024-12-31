@@ -10,3 +10,6 @@ ATTR_START_AT = "start_at"
 ATTR_END_AT = "end_at"
 
 ATTR_COMPONENTS = ["retailer", "ea", "metering", "generation", "admin", "network"]
+
+OAUTH2_AUTHORIZE = "https://api.flick.energy/identity/oauth/authorize"
+OAUTH2_TOKEN = "https://api.flick.energy/identity/oauth/token"
