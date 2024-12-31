@@ -4,33 +4,35 @@ from __future__ import annotations
 
 from typing import Any
 
-from homeassistant.components.application_credentials import (
-    AuthImplementation,
-    AuthorizationServer,
-    ClientCredential,
-)
+from pyflick.const import DEFAULT_CLIENT_ID, DEFAULT_CLIENT_SECRET
+
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.config_entry_oauth2_flow import LocalOAuth2Implementation
+
+from .const import DOMAIN, OAUTH2_AUTHORIZE, OAUTH2_TOKEN
 
 
-class FlickElectricLocalOAuth2Implementation(AuthImplementation):
+class FlickElectricLocalOAuth2Implementation(LocalOAuth2Implementation):
     """Local OAuth2 implementation for Flick Electric."""
 
     def __init__(
         self,
         hass: HomeAssistant,
-        domain: str,
-        client_credential: ClientCredential,
-        authorization_server: AuthorizationServer,
     ) -> None:
         """Set up Flick Electric oauth."""
         super().__init__(
             hass=hass,
-            auth_domain=domain,
-            credential=client_credential,
-            authorization_server=authorization_server,
+            domain=DOMAIN,
+            client_id=DEFAULT_CLIENT_ID,
+            client_secret=DEFAULT_CLIENT_SECRET,
+            authorize_url=OAUTH2_AUTHORIZE,
+            token_url=OAUTH2_TOKEN,
         )
 
-        self._name = client_credential.name
+    @property
+    def name(self) -> str:
+        """Name of the implementation."""
+        return "Flick Electric"
 
     @property
     def extra_authorize_data(self) -> dict[str, Any]:

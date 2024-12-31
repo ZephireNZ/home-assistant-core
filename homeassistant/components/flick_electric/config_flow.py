@@ -28,6 +28,7 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import CONF_ACCOUNT_ID, CONF_SUPPLY_NODE_REF, DOMAIN
+from .oauth2 import FlickElectricLocalOAuth2Implementation
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -62,6 +63,17 @@ class FlickConfigFlow(
     def extra_authorize_data(self) -> dict[str, Any]:
         """Extra data that needs to be appended to the authorize url."""
         return {"client_secret": DEFAULT_CLIENT_SECRET}
+
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle a flow initialized by the user."""
+        self.async_register_implementation(
+            self.hass,
+            FlickElectricLocalOAuth2Implementation(self.hass),
+        )
+
+        return await super().async_step_user(user_input)
 
     async def async_step_select_account(
         self, user_input: Mapping[str, Any] | None = None

@@ -4,13 +4,15 @@ import logging
 
 from pyflick import FlickAPI
 
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_entry_oauth2_flow
 
 from .api import HassFlickAuth
+from .config_flow import FlickConfigFlow
 from .const import CONF_ACCOUNT_ID, CONF_SUPPLY_NODE_REF
 from .coordinator import FlickConfigEntry, FlickElectricDataCoordinator
+from .oauth2 import FlickElectricLocalOAuth2Implementation
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -19,7 +21,12 @@ PLATFORMS = [Platform.SENSOR]
 
 async def async_setup_entry(hass: HomeAssistant, entry: FlickConfigEntry) -> bool:
     """Set up Flick Electric from a config entry."""
-    auth = HassFlickAuth(hass, entry)
+
+    FlickConfigFlow.async_register_implementation(
+        hass, FlickElectricLocalOAuth2Implementation(hass)
+    )
+
+    auth = HassFlickAuth(hass, await _get_oauth_session(hass, entry))
 
     coordinator = FlickElectricDataCoordinator(
         hass, FlickAPI(auth), entry.data[CONF_SUPPLY_NODE_REF]
@@ -39,7 +46,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: FlickConfigEntry) -> bo
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 
-async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+async def async_migrate_entry(
+    hass: HomeAssistant, config_entry: FlickConfigEntry
+) -> bool:
     """Migrate old entry."""
     _LOGGER.debug(
         "Migrating configuration from version %s.%s",
@@ -51,7 +60,9 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
         return False
 
     if config_entry.version == 1:
-        api = FlickAPI(HassFlickAuth(hass, config_entry))
+        api = FlickAPI(
+            HassFlickAuth(hass, await _get_oauth_session(hass, config_entry))
+        )
 
         accounts = await api.getCustomerAccounts()
         active_accounts = [
@@ -78,3 +89,13 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
         return False
 
     return True
+
+
+async def _get_oauth_session(hass: HomeAssistant, config_entry: FlickConfigEntry):
+    """Get an OAuth session."""
+    implementation = (
+        await config_entry_oauth2_flow.async_get_config_entry_implementation(
+            hass, config_entry
+        )
+    )
+    return config_entry_oauth2_flow.OAuth2Session(hass, config_entry, implementation)
