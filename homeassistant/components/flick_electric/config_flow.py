@@ -1,18 +1,17 @@
 """Config Flow for Flick Electric integration."""
 
-import asyncio
 from collections.abc import Mapping
 import logging
 from typing import Any
 
 from aiohttp import ClientResponseError
 from pyflick import FlickAPI
-from pyflick.authentication import AbstractFlickAuth, SimpleFlickAuth
-from pyflick.const import DEFAULT_CLIENT_ID, DEFAULT_CLIENT_SECRET
+from pyflick.authentication import AbstractFlickAuth
+from pyflick.const import DEFAULT_CLIENT_SECRET
 from pyflick.types import APIException, AuthException, CustomerAccount
 import voluptuous as vol
 
-from homeassistant.config_entries import SOURCE_REAUTH, ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import SOURCE_REAUTH, ConfigFlowResult
 from homeassistant.const import (
     CONF_CLIENT_ID,
     CONF_CLIENT_SECRET,
@@ -20,7 +19,7 @@ from homeassistant.const import (
     CONF_USERNAME,
 )
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import aiohttp_client
+from homeassistant.helpers import config_entry_oauth2_flow
 from homeassistant.helpers.selector import (
     SelectOptionDict,
     SelectSelector,
@@ -42,32 +41,27 @@ LOGIN_SCHEMA = vol.Schema(
 )
 
 
-class FlickConfigFlow(ConfigFlow, domain=DOMAIN):
+class FlickConfigFlow(
+    config_entry_oauth2_flow.AbstractOAuth2FlowHandler, domain=DOMAIN
+):
     """Flick config flow."""
 
     VERSION = 2
+    DOMAIN = DOMAIN
+
     auth: AbstractFlickAuth
     accounts: list[CustomerAccount]
     data: dict[str, Any]
 
-    async def _validate_auth(self, user_input: Mapping[str, Any]) -> bool:
-        self.auth = SimpleFlickAuth(
-            username=user_input[CONF_USERNAME],
-            password=user_input[CONF_PASSWORD],
-            websession=aiohttp_client.async_get_clientsession(self.hass),
-            client_id=user_input.get(CONF_CLIENT_ID, DEFAULT_CLIENT_ID),
-            client_secret=user_input.get(CONF_CLIENT_SECRET, DEFAULT_CLIENT_SECRET),
-        )
+    @property
+    def logger(self) -> logging.Logger:
+        """Return logger."""
+        return logging.getLogger(__name__)
 
-        try:
-            async with asyncio.timeout(60):
-                token = await self.auth.async_get_access_token()
-        except (TimeoutError, ClientResponseError) as err:
-            raise CannotConnect from err
-        except AuthException as err:
-            raise InvalidAuth from err
-
-        return token is not None
+    @property
+    def extra_authorize_data(self) -> dict[str, Any]:
+        """Extra data that needs to be appended to the authorize url."""
+        return {"client_secret": DEFAULT_CLIENT_SECRET}
 
     async def async_step_select_account(
         self, user_input: Mapping[str, Any] | None = None
@@ -130,37 +124,21 @@ class FlickConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    async def async_step_user(
-        self, user_input: Mapping[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Handle gathering login info."""
-        errors = {}
-        if user_input is not None:
-            try:
-                await self._validate_auth(user_input)
-            except CannotConnect:
-                errors["base"] = "cannot_connect"
-            except InvalidAuth:
-                errors["base"] = "invalid_auth"
-            except Exception:
-                _LOGGER.exception("Unexpected exception")
-                errors["base"] = "unknown"
-            else:
-                self.data = dict(user_input)
-                return await self.async_step_select_account(user_input)
-
-        return self.async_show_form(
-            step_id="user", data_schema=LOGIN_SCHEMA, errors=errors
-        )
-
     async def async_step_reauth(
-        self, user_input: Mapping[str, Any]
+        self, entry_data: Mapping[str, Any]
     ) -> ConfigFlowResult:
-        """Handle re-authentication."""
+        """Perform reauth upon an API authentication error."""
 
-        self.data = {**user_input}
+        # TODO: Check if this is migration or reauth
+        return await self.async_step_reauth_confirm()
 
-        return await self.async_step_user(user_input)
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Dialog that informs the user that reauth is required."""
+        if user_input is None:
+            return self.async_show_form(step_id="reauth_confirm")
+        return await self.async_step_user()
 
     async def _async_create_entry(self) -> ConfigFlowResult:
         """Create an entry for the flow."""
@@ -200,6 +178,14 @@ class FlickConfigFlow(ConfigFlow, domain=DOMAIN):
     def _get_supply_node_ref(self, account_id: str) -> str:
         """Get the supply node ref for the account."""
         return self._get_account(account_id)["main_consumer"][CONF_SUPPLY_NODE_REF]
+
+    async def async_oauth_create_entry(self, data: dict) -> ConfigFlowResult:
+        """Handle successful OAuth from base implementation."""
+
+        self.data = data
+
+        # Before creating an entry, we need to select an account
+        return await self.async_step_select_account(data)
 
 
 class CannotConnect(HomeAssistantError):
