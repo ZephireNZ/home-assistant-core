@@ -10,7 +10,7 @@ from functools import lru_cache
 from http import HTTPStatus
 import logging
 import pprint
-from typing import Any, cast, overload
+from typing import Any
 
 from aiohttp.web import json_response
 from awesomeversion import AwesomeVersion
@@ -681,33 +681,22 @@ class GoogleEntity:
 
         return device
 
-    @overload
-    def _get_entity_option[T](
+    def _get_entity_option(
         self,
         key: str,
-        default: T,
-    ) -> T: ...
-    @overload
-    def _get_entity_option[T](
-        self,
-        key: str,
-    ) -> T | None: ...
-    def _get_entity_option[T](
-        self,
-        key: str,
-        default: T | None = None,
-    ) -> T | None:
+        default: Any | None = None,
+    ) -> Any:
         """Get an option based on the config or the entity registry."""
         entity_config: dict[str, Any] = self.config.entity_config.get(
             self.state.entity_id, {}
         )
 
         if config_option := entity_config.get(key):
-            return cast(T, config_option)
+            return config_option
 
         if entity_entry := er.async_get(self.hass).async_get(self.state.entity_id):
             if entity_options := entity_entry.options.get(DOMAIN):
-                return cast(T, entity_options.get(key, default))
+                return entity_options.get(key, default)
 
         return default
 

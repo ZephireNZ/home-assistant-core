@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Generator, Iterable
 import logging
-from typing import TYPE_CHECKING, Any, cast, overload
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.components import (
     alarm_control_panel,
@@ -293,7 +293,7 @@ class AlexaEntity:
 
     def description(self) -> str:
         """Return the Alexa API description."""
-        description = self.get_entity_option(CONF_DESCRIPTION, self.entity_id)
+        description: str = self.get_entity_option(CONF_DESCRIPTION, self.entity_id)
         return f"{description} via Home Assistant".translate(TRANSLATION_TABLE)
 
     def alexa_id(self) -> str:
@@ -302,9 +302,10 @@ class AlexaEntity:
 
     def display_categories(self) -> list[str] | None:
         """Return a list of display categories."""
-        return self.get_entity_option(
+        categories: list[str] | None = self.get_entity_option(
             CONF_DISPLAY_CATEGORIES, self.default_display_categories()
         )
+        return categories
 
     def default_display_categories(self) -> list[str] | None:
         """Return a list of default display categories.
@@ -366,29 +367,18 @@ class AlexaEntity:
 
         return result
 
-    @overload
-    def get_entity_option[T](
+    def get_entity_option(
         self,
         key: str,
-        default: T,
-    ) -> T: ...
-    @overload
-    def get_entity_option[T](
-        self,
-        key: str,
-    ) -> T | None: ...
-    def get_entity_option[T](
-        self,
-        key: str,
-        default: T | None = None,
-    ) -> T | None:
+        default: Any | None = None,
+    ) -> Any:
         """Get an option based on the config or the entity registry."""
         if config_option := self.entity_conf.get(key):
-            return cast(T, config_option)
+            return config_option
 
         if entity_entry := er.async_get(self.hass).async_get(self.entity_id):
             if entity_options := entity_entry.options.get(DOMAIN):
-                return cast(T, entity_options.get(key, default))
+                return entity_options.get(key, default)
 
         return default
 
