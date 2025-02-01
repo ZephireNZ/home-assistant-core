@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Generator, Iterable
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast, overload
 
 from homeassistant.components import (
     alarm_control_panel,
@@ -48,7 +48,7 @@ from homeassistant.const import (
     __version__,
 )
 from homeassistant.core import HomeAssistant, State, callback
-from homeassistant.helpers import network
+from homeassistant.helpers import entity_registry as er, network
 from homeassistant.helpers.entity import entity_sources
 from homeassistant.util.decorator import Registry
 
@@ -83,7 +83,7 @@ from .capabilities import (
     AlexaTimeHoldController,
     AlexaToggleController,
 )
-from .const import CONF_DISPLAY_CATEGORIES
+from .const import CONF_DISPLAY_CATEGORIES, DOMAIN
 
 if TYPE_CHECKING:
     from .config import AbstractConfig
@@ -277,7 +277,9 @@ class AlexaEntity:
         self.hass = hass
         self.config = config
         self.entity = entity
-        self.entity_conf = config.entity_config.get(entity.entity_id, {})
+        self.entity_conf: dict[str, Any] = config.entity_config.get(
+            entity.entity_id, {}
+        )
 
     @property
     def entity_id(self) -> str:
@@ -286,14 +288,12 @@ class AlexaEntity:
 
     def friendly_name(self) -> str:
         """Return the Alexa API friendly name."""
-        friendly_name: str = self.entity_conf.get(
-            CONF_NAME, self.entity.name
-        ).translate(TRANSLATION_TABLE)
-        return friendly_name
+        friendly_name: str = self.get_entity_option(CONF_NAME, self.entity.name)
+        return friendly_name.translate(TRANSLATION_TABLE)
 
     def description(self) -> str:
         """Return the Alexa API description."""
-        description = self.entity_conf.get(CONF_DESCRIPTION) or self.entity_id
+        description = self.get_entity_option(CONF_DESCRIPTION, self.entity_id)
         return f"{description} via Home Assistant".translate(TRANSLATION_TABLE)
 
     def alexa_id(self) -> str:
@@ -302,10 +302,9 @@ class AlexaEntity:
 
     def display_categories(self) -> list[str] | None:
         """Return a list of display categories."""
-        entity_conf = self.config.entity_config.get(self.entity.entity_id, {})
-        if CONF_DISPLAY_CATEGORIES in entity_conf:
-            return [entity_conf[CONF_DISPLAY_CATEGORIES]]
-        return self.default_display_categories()
+        return self.get_entity_option(
+            CONF_DISPLAY_CATEGORIES, self.default_display_categories()
+        )
 
     def default_display_categories(self) -> list[str] | None:
         """Return a list of default display categories.
@@ -366,6 +365,32 @@ class AlexaEntity:
         result["capabilities"] = capabilities
 
         return result
+
+    @overload
+    def get_entity_option[T](
+        self,
+        key: str,
+        default: T,
+    ) -> T: ...
+    @overload
+    def get_entity_option[T](
+        self,
+        key: str,
+    ) -> T | None: ...
+    def get_entity_option[T](
+        self,
+        key: str,
+        default: T | None = None,
+    ) -> T | None:
+        """Get an option based on the config or the entity registry."""
+        if config_option := self.entity_conf.get(key):
+            return cast(T, config_option)
+
+        if entity_entry := er.async_get(self.hass).async_get(self.entity_id):
+            if entity_options := entity_entry.options.get(DOMAIN):
+                return cast(T, entity_options.get(key, default))
+
+        return default
 
 
 @callback
