@@ -35,6 +35,7 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.network import get_url
 from homeassistant.helpers.redact import partial_redact
 from homeassistant.util.dt import utcnow
+from homeassistant.util.read_only_dict import ReadOnlyDict
 
 from . import trait
 from .const import (
@@ -599,7 +600,7 @@ class GoogleEntity:
         state = self.state
         traits = self.traits()
         entity_config = self.config.entity_config.get(state.entity_id, {})
-        name = (entity_config.get(CONF_NAME) or state.name).strip()
+        name: str = self.get_entity_option(CONF_NAME, state.name).strip()
 
         # Find entity/device/area registry entries
         entity_entry, device_entry, area_entry = _get_registry_entries(
@@ -643,7 +644,7 @@ class GoogleEntity:
             device.update(trt.sync_options())
 
         # Add roomhint
-        if room := entity_config.get(CONF_ROOM_HINT):
+        if room := self.get_entity_option(CONF_ROOM_HINT):
             device["roomHint"] = room
         elif area_entry and area_entry.name:
             device["roomHint"] = area_entry.name
@@ -680,6 +681,24 @@ class GoogleEntity:
             device["deviceInfo"] = device_info
 
         return device
+
+    def get_entity_option[T](
+        self,
+        key: str,
+        default: T | None = None,
+    ) -> ReadOnlyDict[str, Any] | T | None:
+        """Get an option based on the config or the entity registry."""
+        entity_config: dict[str, Any] = self.config.entity_config.get(
+            self.state.entity_id, {}
+        )
+
+        if config_option := entity_config.get(key):
+            return config_option
+
+        if entity_entry := er.async_get(self.hass).async_get(self.state.entity_id):
+            return entity_entry.options.get(key, default)
+
+        return default
 
     @callback
     def query_serialize(self):
